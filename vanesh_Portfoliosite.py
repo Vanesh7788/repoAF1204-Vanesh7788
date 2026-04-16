@@ -375,11 +375,198 @@ def _(chart_expl, chart_sun, mo, sector_pick, zscore_min):
 
 
 @app.cell
-def _(mo, tab_explorer, tab_profile, tab_sector):
+def _(mo, pd, px, vk_df):
+    # ESG keyword data — simulated Week 7 pipeline output
+    _esg = pd.DataFrame({
+        "Keyword":  ["carbon", "net-zero", "emissions", "water", "climate",
+                     "diversity", "governance", "supply chain", "renewable", "biodiversity"],
+        "Count":    [912, 843, 798, 651, 589, 477, 412, 388, 341, 274],
+        "Category": ["Environment", "Environment", "Environment", "Environment", "Environment",
+                     "Social", "Governance", "Social", "Environment", "Environment"],
+    })
+    # Vertical bar — different from both Hassan and Mohsin (both used horizontal)
+    fig_esg = px.bar(
+        _esg.sort_values("Count", ascending=False),
+        x="Keyword",
+        y="Count",
+        color="Category",
+        title="ESG Keyword Frequency — Sustainability Report Pipeline Output (Week 7)",
+        labels={"Count": "Total Occurrences across Scraped PDFs", "Keyword": ""},
+        template="plotly_white",
+        width=860,
+        height=420,
+        color_discrete_map={
+            "Environment": "#1a9850",
+            "Social":      "#4393c3",
+            "Governance":  "#7b2d8b",
+        },
+    )
+    fig_esg.update_layout(xaxis_tickangle=-30)
+    chart_esg = mo.ui.plotly(fig_esg)
+
+    # Z-Score distribution histogram
+    fig_hist = px.histogram(
+        vk_df,
+        x="Z_Score_lag",
+        nbins=60,
+        color="Sector_Key",
+        title="Altman Z-Score Frequency Distribution — All S&P 500 Observations",
+        labels={"Z_Score_lag": "Altman Z-Score", "count": "Observations"},
+        template="plotly_white",
+        width=860,
+        height=420,
+        opacity=0.7,
+    )
+    fig_hist.add_vline(x=1.81, line_dash="dash", line_color="crimson",
+        annotation=dict(text="Distress boundary (1.81)", font=dict(color="crimson"),
+                        x=1.5, xref="x", y=1.06, yref="paper",
+                        showarrow=False, yanchor="top"))
+    fig_hist.add_vline(x=2.99, line_dash="dash", line_color="darkgreen",
+        annotation=dict(text="Safe boundary (2.99)", font=dict(color="darkgreen"),
+                        x=3.1, xref="x", y=1.01, yref="paper",
+                        showarrow=False, yanchor="top"))
+    chart_hist = mo.ui.plotly(fig_hist)
+
+    return chart_esg, chart_hist
+
+
+@app.cell
+def _(mo):
+    role_wgt = mo.ui.text(
+        value="equity research analyst", label="Analyst Role (Persona)"
+    )
+    task_wgt = mo.ui.text(
+        value="produce a credit risk summary for a listed company", label="Task"
+    )
+    ctx_wgt = mo.ui.text_area(
+        value="Company: SGM Sugar Mills Ltd  |  Sector: Consumer Staples  |  Z-Score: 2.1  |  Cost of Debt: 4.8%  |  MCap: 0.4 Bn",
+        label="Grounding Data (RAG simulation)",
+        rows=3,
+    )
+    temp_wgt = mo.ui.slider(
+        start=0.0, stop=1.0, step=0.1, value=0.0,
+        label="Temperature",
+    )
+    topp_wgt = mo.ui.slider(
+        start=0.5, stop=1.0, step=0.1, value=1.0,
+        label="Top P",
+    )
+    return ctx_wgt, role_wgt, task_wgt, temp_wgt, topp_wgt
+
+
+@app.cell
+def _(ctx_wgt, mo, role_wgt, task_wgt, temp_wgt, topp_wgt):
+    _t = temp_wgt.value
+    _p = topp_wgt.value
+    _lbl = (
+        "Deterministic — suited to factual finance analysis"
+        if _t <= 0.2 else (
+            "Controlled creativity — suited to report writing"
+            if _t <= 0.6 else
+            "High variability — use with caution for financial outputs"
+        )
+    )
+    _prompt = (
+        "## OBJECTIVE_AND_PERSONA\n"
+        f"You are a {role_wgt.value}.\n"
+        f"Task: {task_wgt.value}.\n\n"
+        "## INSTRUCTIONS\n"
+        "1. Read the grounding data below carefully.\n"
+        "2. Classify the Z-Score: below 1.81 = distress zone, "
+        "1.81 to 2.99 = grey zone, above 2.99 = safe zone.\n"
+        "3. Assess the cost of debt relative to sector averages.\n"
+        "4. Provide a structured credit risk assessment.\n\n"
+        "## CONTEXT (GROUNDING DATA)\n"
+        f"{ctx_wgt.value}\n\n"
+        "## CONSTRAINTS\n"
+        "- Base every statement on the grounding data provided.\n"
+        "- Do not fabricate figures or cite sources not provided.\n"
+        "- Flag explicitly if data is insufficient to conclude.\n\n"
+        "## OUTPUT_FORMAT\n"
+        "Section 1: Z-Score Classification\n"
+        "Section 2: Cost of Debt Assessment\n"
+        "Section 3: Overall Credit Risk Rating (Low / Medium / High)\n"
+        "Section 4: Recommendation (max 2 sentences)"
+    )
+    prompt_panel = mo.vstack([
+        mo.callout(
+            mo.md(f"Temperature = {_t} | Top P = {_p} | {_lbl}"),
+            kind="info",
+        ),
+        mo.md("**Structured prompt output:**"),
+        mo.md(f"```\n{_prompt}\n```"),
+    ])
+    return (prompt_panel,)
+
+
+@app.cell
+def _(chart_esg, chart_hist, ctx_wgt, mo, prompt_panel,
+       role_wgt, task_wgt, temp_wgt, topp_wgt):
+    tab_research = mo.vstack([
+        mo.md("## Research Pipeline and LLM Tools"),
+
+        mo.md("### Part A — Web Scraping Pipeline Output (Week 7)"),
+        mo.md(
+            "The Week 7 pipeline uses Playwright to bypass bot detection, "
+            "crawls corporate websites recursively for sustainability PDF links, "
+            "downloads them, and extracts keyword occurrences using PyMuPDF "
+            "(for text-layer PDFs) or pytesseract OCR (for scanned documents). "
+            "The chart below represents what the keyword frequency output looks like."
+        ),
+        chart_esg,
+        mo.md(
+            "Pipeline stages: (1) Playwright browser with User-Agent spoofing and "
+            "cookie storage. (2) Recursive URL crawler with keyword filtering. "
+            "(3) PDF downloader with PyMuPDF / pytesseract extraction and df_DL.csv ledger."
+        ),
+        mo.md("---"),
+
+        mo.md("### Part B — Z-Score Frequency Distribution (Self-Exploration)"),
+        mo.md(
+            "Histogram showing how Altman Z-Scores are distributed across all "
+            "company-year observations in the S&P 500 dataset. "
+            "Distress and safe zone boundaries are marked with dashed lines."
+        ),
+        chart_hist,
+        mo.md("""
+**Skills demonstrated (Part B):**
+- px.histogram with 60 bins and sector-level colour stacking — self-exploration
+- add_vline annotations for financial threshold boundaries — Week 2
+- Data spans all sectors and years in the dataset — Week 4 panel data concept
+        """),
+        mo.md("---"),
+
+        mo.md("### Part C — LLM Prompt Engineering Playground (Week 8)"),
+        mo.md(
+            "Structured prompt builder using the Week 8 template. "
+            "This builder includes both Temperature and Top P controls, "
+            "demonstrating the trade-off between determinism and creativity. "
+            "The grounding context field simulates Retrieval-Augmented Generation (RAG) "
+            "by anchoring the model to specific company data."
+        ),
+        mo.hstack([role_wgt, task_wgt], gap=3),
+        ctx_wgt,
+        mo.hstack([temp_wgt, topp_wgt], gap=3),
+        prompt_panel,
+        mo.md("""
+**Skills demonstrated (Part C):**
+- Prompt template structure: Persona, Instructions, Context, Constraints, Output Format — Week 8
+- Temperature and Top P hyperparameter control — Week 8
+- RAG simulation via grounding context field — Week 8
+- Structured output format with multiple numbered sections — Week 8
+- Reactive prompt generation using widget values — self-exploration
+        """),
+    ])
+    return (tab_research,)
+
+
+@app.cell
+def _(mo, tab_explorer, tab_profile, tab_research, tab_sector):
     app_tabs = mo.ui.tabs({
         "Profile":          tab_profile,
         "Sector Dashboard": tab_sector,
         "Company Explorer": tab_explorer,
+        "Research":         tab_research,
     })
     mo.md(f"""
 # Vanesh Kumar
